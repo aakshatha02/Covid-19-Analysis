@@ -1,0 +1,529 @@
+---
+title: "COVID 19"
+author: "Akshatha"
+format:   
+  html:                     
+    standalone: true      
+    embed-resources: true   
+    code-fold: true         
+    number-sections: false
+execute:
+  warning: false
+  message: false
+---
+
+```{python}
+import geopandas as gpd
+from dash import Dash
+import pandas as pd
+from dash import dcc
+from dash import html
+from dash.dependencies import Input, Output
+import plotly.graph_objects as go
+import plotly.express as px
+import numpy as np
+import matplotlib.pyplot as plt
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+```
+
+```{python}
+df = pd.read_csv("data/Covid-19.csv")
+df1 = pd.read_csv("data/WHO-COVID-19-global-table-data.csv")
+df2 = pd.read_excel("data/population.xlsx")
+df3 = pd.read_csv("data/USA_State_data.csv")
+```
+
+### MAIN STORY POINT : The Transition From A Pandemic to An Endemic State For COVID-19
+ 
+Coronavirus disease 2019 (COVID-19) is a contagious disease caused by the virus SARS-CoV-2. The first known case was identified in Wuhan, China, in December 2019. The disease quickly spread worldwide, resulting in the COVID-19 pandemic.
+ 
+The symptoms of COVID‑19 are variable but often include fever, cough, headache,  fatigue, breathing difficulties, loss of smell, and loss of taste. Symptoms may begin one to fourteen days after exposure to the virus.
+
+Several COVID-19 vaccines have been approved and distributed in various countries, which have initiated mass vaccination campaigns. Other preventive measures include physical or social distancing, quarantining, ventilation of indoor spaces, use of face masks or coverings in public, covering coughs and sneezes, hand washing, and keeping unwashed hands away from the face.
+
+Several factors have had an impact on whether new COVID-19 cases are increasing or declining. These factors include the effectiveness of vaccines over time, human behaviour, infection prevention policies, changes to the coronavirus itself, and the number of people who are vulnerable because they have not developed some immunity, whether from natural infection or through vaccination.
+
+Data is a Covid 19 data which includes USA State data , Population data , and Global data from WHO.
+ 
+## MAIN VISUALIZATIONS
+ 
+1. Visualize the trend of Infection rate and death overtime by WHO REGION
+ 
+insight: highlights how infection rates  and death raates are varied across continents, providing a comparison of the pandemic's intensity and spread in different regions
+ 
+2. Visualize the weekly new cases and death overtime by Region of the Americas ( USA, Brazil and Mexico).
+ 
+3. Visualize the Infection rate and death overtime in the USA.
+
+ 
+## WHO (World Health Organization) REGIONS
+ 
+AFRO - African Region
+ 
+AMRO - Region of the Americas
+ 
+EMRO - Eastern Mediterranean Region
+ 
+EURO - European Region
+ 
+SERO - South-East Asia Region
+ 
+WPRO - Western Pacific Region
+
+```{python}
+countries_sele = ['Country', 'WHO_region']
+df_Who = df[countries_sele].drop_duplicates()
+df_Who_filtered = df_Who[df_Who['WHO_region'] != 'Other']
+```
+```{python}
+fig = px.choropleth(
+    df_Who_filtered,
+    locations="Country",
+    locationmode="country names",
+    color="WHO_region",  
+    hover_name="Country",
+    title="WHO Regions by Country",
+    projection="natural earth",
+    scope="world",
+    category_orders={"WHO Region": ["AFRO", "AMRO", "EMRO", "EURO", "SEARO", "WPRO"]},  # Specify the order of WHO regions
+)
+fig.update_layout(
+    geo=dict(
+        showcoastlines=True,
+        coastlinecolor="red",
+        showland=True,
+        landcolor="white",
+        showocean=True,
+    ),
+    width=900,
+    height=1000,
+)
+fig.show()
+
+```
+
+The map visualizes the distribution of WHO regions across different countries with colors identfying each WHO Region.
+
+```{python}
+df['WHO_region'].replace('Other',pd.NA,inplace=True)
+df.dropna(inplace=True)
+```
+
+
+```{python}
+df_aggregated = df.groupby('WHO_region').agg({'New_cases':sum,
+'New_deaths':sum}).reset_index()
+```
+```{python}
+df_aggregated['total_caes'] = df_aggregated['New_cases']
+df_aggregated['total_deaths'] = df_aggregated['New_deaths']
+df_aggregated = df_aggregated[['WHO_region','total_caes','total_deaths']]
+df_aggregated = df_aggregated.sort_values(by = 'total_caes', ascending = True)
+```
+```{python}
+# Convert 'Date_reported' to datetime type
+df['Date_reported'] = pd.to_datetime(df['Date_reported'])
+# Extract month and year
+df['Month'] = df['Date_reported'].dt.month
+df['Year'] = df['Date_reported'].dt.year
+```
+```{python}
+df['Date'] = pd.to_datetime(df[['Year', 'Month']].assign(DAY=1))
+#group by WHO_region and Date_reported
+weekly_data = df.groupby(['WHO_region', pd.Grouper(key='Date_reported', freq='W-Mon')])['New_cases'].sum().reset_index()
+```
+
+```{python}
+df_aggregated_who_region = df.groupby([ 'Country','Year', 'WHO_region']).agg({'New_cases':sum,
+'New_deaths':sum}).reset_index()
+
+df_aggregated_who_region['total_cases'] = df_aggregated_who_region['New_cases']
+df_aggregated_who_region['total_deaths'] = df_aggregated_who_region['New_deaths']
+df_aggregated_who_region = df_aggregated_who_region[['Country','total_cases','total_deaths','Year', 'WHO_region']]
+
+merged_data_who_region = pd.merge(df_aggregated_who_region, df2, on='Country')
+
+df_melted_who = pd.melt(merged_data_who_region, id_vars=['Country', 'total_cases', 'total_deaths', 'Year', 'WHO_region'],
+                    var_name='population_year', value_name='population')
+df_melted_who['year'] = df_melted_who['population_year'].str.extract('(\d+)', expand=False).astype(int)
+df_melted_who = df_melted_who[df_melted_who['Year'] == df_melted_who['year']]
+df_melted_who = df_melted_who.drop(['population_year', 'year'], axis=1)
+df_melted_who['total_cases_per_million'] = (df_melted_who['total_cases'] / df_melted_who['population']) * 1e6
+```
+
+
+```{python}
+#group by WHO_region, Country, Date_reported
+weekly_data_country=df.groupby(['WHO_region', 'Country',pd.Grouper(key='Date_reported', freq='W-Mon')])[['New_cases','New_deaths']].sum().reset_index()
+weekly_data_americas = weekly_data_country[weekly_data_country['WHO_region']=='AMRO']
+weekly_data_usa= weekly_data_country[weekly_data_country['Country']=='United States of America']
+weekly_data_brazil = weekly_data_country[weekly_data_country['Country']=='Brazil']
+weekly_data_mexico = weekly_data_country[weekly_data_country['Country']=='Mexico']
+weekly_data_americas_aggregate = weekly_data_americas.groupby('Country').agg({'New_cases':sum}).reset_index()
+```
+
+```{python}
+df_aggregated_country = df.groupby(['Country', 'Year']).agg({'New_cases':sum,
+'New_deaths':sum}).reset_index()
+
+df_aggregated_country['total_cases'] = df_aggregated_country['New_cases']
+df_aggregated_country['total_deaths'] = df_aggregated_country['New_deaths']
+df_aggregated_country = df_aggregated_country[['Country','total_cases','total_deaths','Year']]
+
+merged_data = pd.merge(df_aggregated_country, df2, on='Country')
+
+years = ['2020', '2021', '2022', '2023']
+
+# Calculate cases per million for each year
+for year in years:
+    cases_col = 'total_cases'
+    population_col = f'{year}_population'
+    per_million_cases_col = f'cases_per_million_{year}'
+
+    merged_data[per_million_cases_col] = (merged_data[cases_col] / merged_data[population_col]) * 1e6
+
+fig = px.choropleth(
+    merged_data,
+    locations="Country",
+    locationmode="country names",
+    color="total_cases",
+    hover_name="Country",
+    animation_frame="Year",
+    title="Total Cases by Country Over the Years",
+    color_continuous_scale="YlOrRd",  # Change the color scale (e.g., "Viridis", "YlOrRd", "Blues")
+    projection="natural earth",  # Choose a map projection
+)
+
+fig.update_layout(
+    geo=dict(
+        showcoastlines=True,
+        coastlinecolor="red",
+        showland=True,
+        landcolor="white",
+        showocean=True,
+    ),
+    width=900,
+    height=1000,
+)
+fig.show()
+
+```
+
+This map displays the Total Cases by Country over the years. It shows how Covid Cases  changes over time (from 2020-2023)
+
+```{python}
+fig = px.choropleth(
+    merged_data,
+    locations="Country",
+    locationmode="country names",
+    color="total_deaths",
+    hover_name="Country",
+    animation_frame="Year",
+    title="Total Deaths by Country Over the Years",
+    color_continuous_scale="YlOrRd",  # Change the color scale (e.g., "Viridis", "YlOrRd", "Blues")
+    projection="natural earth",  # Choose a map projection
+)
+
+fig.update_layout(
+    geo=dict(
+        showcoastlines=True,
+        coastlinecolor="red",
+        showland=True,
+        landcolor="white",
+        showocean=True,
+    ),
+    width=900,
+    height=1000,
+)
+fig.show()
+```
+
+The observed map shows the Total Death by Country over the years. It shows how Covid death rate changes over time (from 2020-2023)
+
+```{python}
+
+df_melted_who_aggr = df_melted_who.groupby('WHO_region').agg({'total_cases':sum,
+'total_deaths':sum,'population':sum}).reset_index()
+
+first_graph = px.bar(df_melted_who_aggr, y='WHO_region', x=['total_cases'],
+                      title='Total Cases by WHO Region',
+                      labels={'value': 'Count'},
+                      color = 'WHO_region')
+first_graph  
+```
+
+The bar chart visualizes the total cases by WHO region and each bar is colored differently based on the WHO region. The EURO bar (Germany, France, Russia, etc.) has a highest number of total cases followed by WPRO (China, Japan, Philippines, etc.) and AMRO (USA, Brazil, Mexico, etc.), while AFRO (South Africa, Zambia, Nigeria, etc.) and EMRO (Iran, Tunisia, Pakistan, etc.) has the least number of total cases in the WHO Region.
+
+The EURO bar was due to insufficient vaccination coverage and relaxation of public health and social measure. 
+
+The WPRO and AMRO was due to population density (having more older people who are easily prone to diseases or Covid), International travels and other. 
+
+The AFRO and EMRO was due to preventive measures early on, which contributed to controlling the virus. Public measures like lockdown, social distancing and nose mask  wearing were implemented early on to prevent the spread of the virus. Demographic was also a factor ( the countries in the AFRO and EMRO regions have younger population on average as compared to the others so  they may experience mild symptoms and low mortality rate).
+
+
+```{python}
+second_graph = px.bar(df_melted_who_aggr, y='WHO_region', x=['total_deaths'],
+                      title='Total Deaths by WHO Region',
+                      labels={'value': 'Count'},
+                      color = 'WHO_region')
+second_graph
+```
+
+The bar chart visualizes the total deaths by WHO region and each bar is colored differently based on the WHO region. The AMRO bar (USA, Brazil, Mexico, etc.) has a highest number of total deaths followed by EURO (Germany, Italy, UK, etc.) and SERO (India, Indonesia, Thailand, etc.), while AFRO (South Africa, Algeria, Ethiopia, etc.) and EMRO (Iran, Egypt, Tunisia, etc.) has the least number of total deaths in the WHO Region.
+
+
+```{python}
+df_aggregated_country = df.groupby(['Country', 'Year']).agg({'New_cases':sum,
+'New_deaths':sum}).reset_index()
+
+df_aggregated_country['total_cases'] = df_aggregated_country['New_cases']
+df_aggregated_country['total_deaths'] = df_aggregated_country['New_deaths']
+df_aggregated_country = df_aggregated_country[['Country','total_cases','total_deaths','Year']]
+
+merged_data = pd.merge(df_aggregated_country, df2, on='Country')
+
+
+```
+
+
+
+```{python}
+third_graph = px.line(weekly_data, x='Date_reported', y='New_cases', color='WHO_region',
+                        title='Weekly New Cases over Time by WHO Region',
+                        labels = {'New_case':'Weekly New Cases'} ,
+                        line_shape='linear',
+                        render_mode ='svg' )
+
+third_graph.update_layout(height=700)
+```
+
+The chart illustrates the weekly progression of new COVID-19 cases across time, using distinct lines to denote different WHO regions. The peak occurred between December 2022 and January 2023, primarily driven by countries like China, Japan, Korea, and Singapore. This rise coincided with the relaxation of protective measures, such as border openings and reduced adherence to mask-wearing and social distancing in China. Singapore also saw a continuous increase in total cases, reportedly influenced by the emergence of two new variants.
+
+```{python}
+df_aggregated_country = df.groupby(['Country', 'Year', 'WHO_region']).agg({'New_cases':sum,
+'New_deaths':sum}).reset_index()
+
+df_aggregated_country['total_cases'] = df_aggregated_country['New_cases']
+df_aggregated_country['total_deaths'] = df_aggregated_country['New_deaths']
+df_aggregated_country = df_aggregated_country[['Country','total_cases','total_deaths','Year', 'WHO_region']]
+
+merged_data_usa = pd.merge(df_aggregated_country, df2, on='Country')
+
+```
+
+
+
+```{python}
+merged_data_usa = merged_data_usa[merged_data_usa['WHO_region'] == 'AMRO']
+```
+
+
+
+```{python}
+df_melted = pd.melt(merged_data_usa, id_vars=['Country', 'total_cases', 'total_deaths', 'Year', 'WHO_region'],
+                    var_name='population_year', value_name='population')
+df_melted['year'] = df_melted['population_year'].str.extract('(\d+)', expand=False).astype(int)
+df_melted = df_melted[df_melted['Year'] == df_melted['year']]
+df_melted = df_melted.drop(['population_year', 'year'], axis=1)
+df_melted['total_cases_per_million'] = (df_melted['total_cases'] / df_melted['population']) * 1e6
+
+```
+
+```{python}
+df_melted['Year'] = df_melted['Year'].astype(str)
+fig = px.bar(df_melted, y='Country', x='total_cases_per_million',
+             title='Total Cases in Americas per Million Population by Country',
+             color= 'Year',
+             labels={'total_cases_per_million': 'Total Cases per Million Population'},
+             category_orders={'Year': sorted(df_melted['Year'].unique())}
+             )
+
+# Show the figure
+fig.show()
+```
+
+The bar chart illustrates the total number of COVID-19 cases per million people for different countries in the Americas. In 2020, countries such as the USA, Brazil, and Argentina and others reported the highest cases per million population. In 2021 and 2022, notable increases were observed in countries like USA, Aruba, Bonaire, Cayman Islands, French Guiana, Guadeloupe, and Saint Barthélemy. In 2023, Saba, Puerto Rico, and Barbados experienced significant case numbers due to the surge of Omicron variant(Second Wave) of Covid 19 and relaxation of some of the protective measures. 
+
+The bar chart depicts a significant decrease in cases in 2023 for countries such as the USA (from 59.055K to 11.838K), Brazil (from 35.476K to 6.558K), and Argentina (from 36.898K to 3.570K). This decline is attributed to widespread vaccination efforts, the implementation of strict preventive measures, and individual behaviors, all contributing to shaping the course of the pandemic.
+
+
+
+```{python}
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+
+fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.02)
+
+fig.add_trace(go.Scatter(x=weekly_data_usa['Date_reported'], y=weekly_data_usa['New_cases'], line=dict(color='blue'), name='USA'), row=1, col=1)
+fig.add_trace(go.Scatter(x=weekly_data_brazil['Date_reported'], y=weekly_data_brazil['New_cases'], line=dict(color='green'), name='Brazil'), row=2, col=1)
+fig.add_trace(go.Scatter(x=weekly_data_mexico['Date_reported'], y=weekly_data_mexico['New_cases'], line=dict(color='red'), name='Mexico'), row=3, col=1)
+
+fig.update_layout(title_text='Weekly New Cases over Time by USA, Mexico, and Brazil')
+fig.update_xaxes(title_text='Date Reported', row=3, col=1)
+fig.update_yaxes(title_text='New Cases', row=2, col=1)
+
+fig.update_layout(legend=dict(
+    orientation="h",
+    yanchor="bottom",
+    y=1.02,
+    xanchor="right",
+    x=1
+))
+
+fig.show()
+
+```
+
+These charts depict the weekly fluctuations in new COVID-19 cases over time for the USA, Brazil, and Mexico.
+
+In the USA chart, there is a discernible pattern of increasing and decreasing cases from January 2020 to November 2020, followed by a sharp rise and fall between November 2020 and February 2021. The peak of COVID-19 cases in the USA occurred from December 2021 to January 2022, after which a gradual decline ensued.
+
+Brazil experienced continuous variations, with both highs and lows, in weekly COVID-19 cases from January 2020 to December 2021. The highest peak was observed during January 2022 to February 2022, followed by a gradual decrease over time.
+
+Mexico witnessed its highest peaks in January 2022 and July 2022, with a subsequent gradual decline in cases over time.
+
+In each of the charts, it is evident that three nations experienced their highest peaks from late December to the early part of the following year. This surge can be attributed to festive occasions such as New Year or Christmas celebrations, during which restrictive measures were relaxed, leading to increased travel and gatherings for the winter holidays. Additionally, in the case of the USA, a portion of the spike can be attributed to the circulation and eventual dominance of the Delta variant.
+
+
+```{python}
+fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.02)
+
+
+fig.add_trace(go.Scatter(x=weekly_data_usa['Date_reported'], y=weekly_data_usa['New_deaths'], line=dict(color='blue'), name='USA'), row=1, col=1)
+fig.add_trace(go.Scatter(x=weekly_data_brazil['Date_reported'], y=weekly_data_brazil['New_deaths'], line=dict(color='green'), name='Brazil'), row=2, col=1)
+fig.add_trace(go.Scatter(x=weekly_data_mexico['Date_reported'], y=weekly_data_mexico['New_deaths'], line=dict(color='red'), name='Mexico'), row=3, col=1)
+
+fig.update_layout(title_text='Weekly New deaths over Time by USA, Mexico, and Brazil')
+fig.update_xaxes(title_text='Date Reported', row=3, col=1)
+fig.update_yaxes(title_text='New Deaths', row=2, col=1)
+
+fig.update_layout(legend=dict(
+    orientation="h",
+    yanchor="bottom",
+    y=1.02,
+    xanchor="right",
+    x=1
+))
+
+fig.show()
+
+```
+
+The chart illustrates the weekly new death counts over time for the USA, Brazil, and Mexico. 
+In the USA, there are notable fluctuations in weekly new death counts, particularly in months like April and December 2020, January and February 2021, and January and February 2022, indicating higher death rates during these periods. Subsequently, there is a gradual decline in deaths over time.
+
+The chart for Brazil shows a gradual increase in weekly deaths, reaching its peak in March and April 2021, followed by a gradual decline over time.
+
+In Mexico, the graph exhibits more fluctuations in weekly new deaths until it reaches its peak in January 2021. It continues to experience some fluctuations but gradually declines over time.
+
+An increase in the number of cases in late December and early January put a strain on healthcare systems, posing difficulties in delivering prompt and sufficient medical assistance. Hospitals likely encountered higher patient volumes, affecting their capacity to effectively handle severe cases.
+
+Examining the charts depicting the weekly new cases and weekly new deaths over time for the USA, Mexico, and Brazil, let's take the USA as an example. In December 2020, the total cases were 1.503M, with a death rate of 19.15K. However, by December 2022, the total cases had risen to 1.588M, but the death rate had decreased to 3.03K. This suggests a reduction in the death rate over the specified period. Additionally, it's noteworthy that while the total cases increased, the mortality rate decreased, indicating potentially improved medical interventions or changes in the nature of the cases.
+
+The weekly reports on new cases and deaths reflect a gradual shift of the virus from a pandemic phase to an endemic phase over time. 
+
+```{python}
+df_aggregated_country = df.groupby(['Country', 'Year']).agg({'New_cases':sum,
+'New_deaths':sum}).reset_index()
+
+df_aggregated_country['total_cases'] = df_aggregated_country['New_cases']
+df_aggregated_country['total_deaths'] = df_aggregated_country['New_deaths']
+df_aggregated_country = df_aggregated_country[['Country','total_cases','total_deaths','Year']]
+```
+```{python}
+merged_data = pd.merge(df_aggregated_country, df2, on='Country')
+```
+
+```{python}
+years = ['2020', '2021', '2022', '2023']
+
+# Calculate cases per million for each year
+for year in years:
+    cases_col = 'total_cases'
+    population_col = f'{year}_population'
+    per_million_cases_col = f'cases_per_million_{year}'
+
+    merged_data[per_million_cases_col] = (merged_data[cases_col] / merged_data[population_col]) * 1e6
+```
+
+
+
+```{python}
+
+# Convert columns to numeric
+#df3['Total_cases'] = pd.to_numeric(df3['Total_cases'].str.replace(',', ''))
+#df3['Total_deaths'] = pd.to_numeric(df3['Total_deaths'].str.replace(',', ''))
+#df3['Population'] = pd.to_numeric(df3['Population'].str.replace(',', ''))
+color_map = px.colors.qualitative.Set3[:len(df3['States'])]
+df3['Total_cases_per_million'] = (df3['Total_cases'] / df3['Population']) * 1e6
+first_graph = px.bar(df3, y='States', x='Population',
+                      title='Total Cases in USA(States)',
+                      labels={'Population': 'Population'},
+                      hover_data={'Total_cases_per_million': True},
+                      #color = 'States',
+                      color_discrete_map=dict(zip(df3['States'], color_map)),
+                      category_orders={'States': df3['States'].tolist()})
+first_graph 
+```
+
+The bar chart represent the total COVID-19 cases with population per million count in various states of the USA. 
+States like Alaska(412159), Kentucky(404849), North Dakota(393725) had more cases while Virginia(271311), Washington(261261), Maryland(233995) had least cases in US. 
+
+Through this, we aim to demonstrate the overall number of cases in relation to the population, assessing whether states with larger populations have been more significantly impacted by cases or not.
+
+As an illustration, California, with a total population of 39.5122M, recorded a total of 316,894 cases per million. In contrast, Florida, with a total population of 21.47774M, reported a higher total of 365,914 cases per million. Therefore, Florida has a greater number of cases despite having a smaller population compared to California.
+
+
+```{python}
+df3['Total_deaths_per_million'] = (df3['Total_deaths'] / df3['Population']) * 1e6
+color_map = px.colors.qualitative.Set3[:len(df3['States'])]
+green_color = 'green'
+first_graph = px.bar(df3, y='States', x='Population',
+                      title='Total Deaths in USA(States)',
+                      labels={'Population': 'Population'},
+                      hover_data={'Total_deaths_per_million': True},
+                      #color_discrete_map=dict(zip(df3['States'], color_map)),
+                      category_orders={'States': df3['States'].tolist()})
+first_graph.update_layout(showlegend=False)
+first_graph 
+```
+
+The bar chart represent the total COVID-19 deaths with population per million count in various states of the USA. 
+States like Arizona(4640), Mississippi(4527), New Mexico(4404), West Virginia(4601) had more deaths while Alaska(2029), Hawaii(1476), Utah(1699), Vermont(1488) had least deaths rate in US. 
+
+Through this, we aim to demonstrate the overall number of deaths in relation to the population, assessing whether states with larger populations have been more significantly impacted by deaths or not.
+
+As an illustration, California, with a total population of 39.5122M, recorded a total of 2680 deaths per million. In contrast, Florida, with a total population of 21.47774M, reported a higher total of 4297 deaths per million. Therefore, Florida has a greater number of deaths despite having a smaller population compared to California.
+
+## CONCLUSION
+
+The provided data and visualizations offer a comprehensive view of the transition from a pandemic to an endemic state for COVID-19. The initial spread of the virus globally led to the declaration of a pandemic, prompting widespread efforts to curb its impact. Vaccination campaigns, preventive measures, and changes in human behavior played pivotal roles in shaping the trajectory of the pandemic.
+
+The graphs examining infection rates and death rates across WHO regions highlight variations in the intensity and spread of the pandemic worldwide. The transition from pandemic to endemic states is evident in the declining death rates over time, especially in regions where effective vaccination campaigns and preventive measures were implemented.
+
+The Weekly new cases over time by WHO Region chart shows the impact of relaxed protective measures in fueling a peak in COVID-19 cases, particularly in key Asian regions. Singapore's rising cases, attributed to new variants, highlight the challenges in transitioning from pandemic to endemic phases.
+
+
+The bar chart for Total cases in Americas per million popoulation by country illustrates a decrease in COVID-19 cases per million people in 2023 for countries like the USA, Brazil, and Argentina, credited to vaccination efforts and preventive measures. However, the emergence of the Omicron variant in some regions, such as Saba, Puerto Rico, and Barbados, signals ongoing challenges in transitioning from pandemic to endemic states. 
+
+The Weekly new cases and deaths over time by USA, Mexico, Brazil charts depicts fluctuations in COVID-19 reveal distinct patterns. Each country experienced its highest case peaks from late December to the early part of the following year, attributed to relaxed measures during festive seasons and the emergence of the Delta variant in the USA. Subsequently, there is a gradual decline in cases and deaths over time across the three countries.
+The weekly reports on new cases and deaths reflect a gradual shift of the virus from a pandemic phase to an endemic phase over time.
+
+As the pandemic transitions to an endemic phase, ongoing vigilance, vaccination efforts, and adaptable public health strategies will remain crucial in managing the evolving nature of COVID-19. The presented data provides valuable insights for policymakers, healthcare professionals, and the public to navigate the ongoing challenges and uncertainties associated with the pandemic's transition.
+
+## REFERENCES
+
+*WHO Coronavirus (COVID-19) dashboard. (n.d.). WHO Coronavirus (COVID-19) Dashboard With Vaccination Data. https://covid19.who.int/*
+
+*United States COVID - Coronavirus statistics - Worldometer. (n.d.). https://www.worldometers.info/coronavirus/country/us/*
+
+*Feuer, W., & Rattner, N. (2021, January 27). U.S. reports record number of Covid deaths in January as new strains threaten progress. CNBC. https://www.cnbc.com/2021/01/27/us-reports-record-number-of-covid-deaths-in-january.html*
+
+*TIMESOFINDIA.COM. (2023, October 7). COVID-19 cases rise in Singapore due to new variants: All about it here. The Times of India. https://timesofindia.indiatimes.com/life-style/health-fitness/health-news/singapore-faces-new-covid-19-wave-all-about-it-here/photostory/104231837.cms?picid=104231884*
+
+*https://edition.cnn.com/2023/08/16/health/covid-19-levels/index.html*
+
+*Population by country (2023) - Worldometer. (n.d.). https://www.worldometers.info/world-population/population-by-country/*
+
+*World Bank Open Data. (n.d.). World Bank Open Data. https://data.worldbank.org/indicator/SP.POP.TOTL?end=2022&start=1960*
