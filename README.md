@@ -1,5 +1,4 @@
-# Project Report
-## COVID 19
+## COVID 19 Analysis
 
 ### MAIN STORY POINT : The Transition From A Pandemic to An Endemic State For COVID-19
 
